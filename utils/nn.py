@@ -6,11 +6,14 @@ import torch as T
 import torch.nn as nn
 import torch.nn.functional as F
 
+from tqdm.auto import trange
 
-class BaseModule(nn.Module):
+
+class Module(nn.Module):
     def __init__(self):
         super().__init__()
         self.name = 'Custom Module'
+        self.criterion = nn.MSELoss()
 
     def count_parameters(self):
         return count_parameters(self)
@@ -31,6 +34,32 @@ class BaseModule(nn.Module):
     def can_be_preloaded(self):
         return os.path.isfile(self.path)
 
+    def configure_optim(self, lr):
+        self.optim = T.optim.Adam(self.parameters(), lr=lr)
+
+    def optim_step(self, batch, optim_kw={}):
+        X, y = batch
+
+        y_pred = self(X)
+        loss = self.criterion(y_pred, y)
+
+        if loss.requires_grad:
+            if not hasattr(self, 'optim'):
+                self.configure_optim(**optim_kw)
+
+            self.optim.zero_grad()
+            loss.backward()
+            self.optim.step()
+
+        return loss, {}
+
+    def fit(self, data_gen, its, optim_kw={}):
+        tr = trange(its)
+        for _ in tr:
+            batch = next(data_gen)
+            loss, _info = self.optim_step(batch, optim_kw)
+            tr.set_description(f'Loss: {loss:0.6f}')
+
     def summary(self):
         result = f' > {self.name[:38]:<38} | {count_parameters(self):09,}\n'
         for name, module in self.named_children():
@@ -43,6 +72,31 @@ class BaseModule(nn.Module):
     @property
     def device(self):
         return next(self.parameters()).device
+
+
+class DenseAE(BaseModule):
+    def forward(self, x):
+        if not hasattr(self, 'encoder'):
+            dims = np.prod(list(x.shape[1:]))
+            self.encoder = nn.Sequential(
+                nn.Flatten(),
+                dense(dims, 128),
+                dense(128, 16),
+                dense(16, 2, a=None),
+            )
+
+            self.decoder = nn.Sequential(
+                dense(2, 16),
+                dense(16, 128),
+                dense(128, 28 * 28),
+                reshape(-1, *x.shape[1:]),
+            )
+
+            self.criterion = nn.MSELoss()
+
+        x = self.encoder(x)
+        x = self.decoder(x)
+        return x
 
 
 def get_activation():
@@ -451,6 +505,13 @@ class KernelEmbedding(nn.Module):
 
         return transformed_tensor
 
+
+# Extensions
+def to_np(t):
+    return t.detach().cpu().numpy()
+
+
+T.Tensor.np = property(lambda self: to_np(self))
 
 if __name__ == '__main__':
     # Sanity check mask_sequence
