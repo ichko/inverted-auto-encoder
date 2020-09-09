@@ -9,6 +9,17 @@ import torch.nn.functional as F
 from tqdm.auto import trange
 
 
+def fit(model, data_gen, its, optim_kw={}):
+    tr = trange(its)
+
+    for _ in tr:
+        batch = next(data_gen)
+        loss, info = model.optim_step(batch, optim_kw)
+        tr.set_description(f'Loss: {loss:0.6f}')
+
+        yield loss, info
+
+
 class Module(nn.Module):
     def __init__(self):
         super().__init__()
@@ -40,7 +51,7 @@ class Module(nn.Module):
     def optim_step(self, batch, optim_kw={}):
         X, y = batch
 
-        y_pred = self(X)
+        y_pred = self.optim_forward(X)
         loss = self.criterion(y_pred, y)
 
         if loss.requires_grad:
@@ -51,14 +62,11 @@ class Module(nn.Module):
             loss.backward()
             self.optim.step()
 
-        return loss, {}
-
-    def fit(self, data_gen, its, optim_kw={}):
-        tr = trange(its)
-        for _ in tr:
-            batch = next(data_gen)
-            loss, _info = self.optim_step(batch, optim_kw)
-            tr.set_description(f'Loss: {loss:0.6f}')
+        return loss, {
+            'X': X,
+            'y_pred': y_pred,
+            'y': y,
+        }
 
     def summary(self):
         result = f' > {self.name[:38]:<38} | {count_parameters(self):09,}\n'
@@ -69,12 +77,19 @@ class Module(nn.Module):
 
         return result
 
+    def optim_forward(self, X):
+        return self.forward(X)
+
     @property
     def device(self):
         return next(self.parameters()).device
 
 
-class DenseAE(BaseModule):
+class DenseAE(Module):
+    def __init__(self, hid_size=2):
+        super().__init__()
+        self.hid_size = hid_size
+
     def forward(self, x):
         if not hasattr(self, 'encoder'):
             dims = np.prod(list(x.shape[1:]))
@@ -82,13 +97,13 @@ class DenseAE(BaseModule):
                 nn.Flatten(),
                 dense(dims, 128),
                 dense(128, 16),
-                dense(16, 2, a=None),
+                dense(16, self.hid_size, a=None),
             )
 
             self.decoder = nn.Sequential(
-                dense(2, 16),
+                dense(self.hid_size, 16),
                 dense(16, 128),
-                dense(128, 28 * 28),
+                dense(128, 28 * 28, a=None),
                 reshape(-1, *x.shape[1:]),
             )
 
