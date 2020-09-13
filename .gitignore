@@ -3,3 +3,5 @@ MNIST
 logs_gan
 .vscode
 __pycache__
+
+.imgs
