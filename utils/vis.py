@@ -8,6 +8,9 @@ FIG = None
 
 
 def fig(figsize):
+    if type(figsize) is int:
+        figsize = figsize, figsize
+
     class FigCTX:
         def __enter__(self):
             global FIG
@@ -84,7 +87,7 @@ def concat_grid(imgs):
     return imgs
 
 
-def imshow(imgs, figsize=(8, 8)):
+def imshow(imgs, figsize=8):
     global FIG
     fig = FIG
 
@@ -113,7 +116,7 @@ def imshow(imgs, figsize=(8, 8)):
 
 
 # Extensions
-T.Tensor.imshow = lambda self, figsize=(8, 8): imshow(
+T.Tensor.imshow = lambda self, figsize=8: imshow(
     self.detach().cpu().numpy(),
     figsize,
 )

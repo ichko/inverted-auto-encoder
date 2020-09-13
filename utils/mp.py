@@ -12,6 +12,7 @@ def fit(model, data_gen, its, optim_kw={}):
             self.loss = 999
             self.info = {}
             self.should_terminate = False
+            self.it = 0
 
             self.thread = threading.Thread(target=self._step)
             self.thread.start()
@@ -27,7 +28,7 @@ def fit(model, data_gen, its, optim_kw={}):
             self.model = model
 
             tr = trange(its)
-            for _i in tr:
+            for i in tr:
                 if self.should_terminate:
                     return
 
@@ -35,6 +36,7 @@ def fit(model, data_gen, its, optim_kw={}):
                 loss, info = model.optim_step(batch, optim_kw)
                 tr.set_description(f'Loss: {loss:0.6f}')
                 self.loss, self.info = loss, info
+                self.it = i
 
         def __exit__(self, exc_type, exc_val, exc_tb):
             self.terminate()

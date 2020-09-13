@@ -115,7 +115,7 @@ class DenseAE(Module):
 
 
 def get_activation():
-    LEAKY_SLOPE = 0.1
+    LEAKY_SLOPE = 0.2
     return nn.LeakyReLU(LEAKY_SLOPE, inplace=True)
 
 
