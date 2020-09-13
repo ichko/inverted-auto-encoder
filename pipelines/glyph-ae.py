@@ -17,13 +17,17 @@ class MsgEncoder(tu.Module):
 
         self.net = nn.Sequential(
             tu.reshape(-1, msg_size, 1, 1),
-            tu.deconv_block(32, 128, ks=5, s=2, p=1),
+            tu.deconv_block(msg_size, 128, ks=5, s=2, p=1),
+            nn.Dropout(0.2),
             tu.deconv_block(128, 64, ks=5, s=1, p=2),
+            nn.Dropout(0.5),
             tu.deconv_block(64, 32, ks=5, s=1, p=2),
             tu.deconv_block(32, 16, ks=5, s=2, p=1),
+            nn.Dropout(0.3),
             tu.deconv_block(16, 8, ks=5, s=1, p=2),
             tu.deconv_block(8, 8, ks=5, s=1, p=2),
-            tu.deconv_block(8, 4, ks=5, s=2, p=1),
+            nn.Dropout(0.01),
+            tu.deconv_block(8, 4, ks=5, s=2, p=2),
             tu.deconv_block(4, img_channels, ks=4, s=2, p=0, a=nn.Sigmoid()),
         )
 
@@ -63,7 +67,7 @@ class ReverseAE(tu.Module):
             yield X, X
 
     def sample(self, bs):
-        return T.randn(bs, self.msg_size).to(self.device)
+        return T.rand(bs, self.msg_size).to(self.device)
 
     def forward(self, bs):
         msg = self.sample(bs)
@@ -80,9 +84,7 @@ class ReverseAE(tu.Module):
             noise = noise.to(self.device)
             return t * noise
 
-        bs = X.size(0)
-        msg = self.sample(bs)
-        img = self.encoder(msg)
+        img = self.encoder(X)
         img = apply_noise(img)
         pred_msg = self.decoder(img)
 
@@ -104,14 +106,14 @@ if __name__ == "__main__":
         its=512 * epochs,
         data_gen=model.get_data_gen(bs=128),
     ) as fit:
-        l
         # fit.join()
-       while not fit.done:
+        for i in fit.wait:
             # epoch = fit.it // epochs
             # model.configure_optim(lr=0.001, noise_size=0.5)
 
-            if fit.it % 500 == 0:
+            if i % 500 == 0:
                 # ctx.clear()
-                model.encoder(msgs).reshape(3, 12, 1, 32, 32).imshow()
+                imgs = model.encoder(msgs)
+                imgs.reshape(3, 12, 1, 28, 28).imshow()
 
                 plt.savefig('.imgs/screen.png')

@@ -62,7 +62,7 @@ class Module(nn.Module):
             loss.backward()
             self.optim.step()
 
-        return loss, {
+        return loss.item(), {
             'X': X,
             'y_pred': y_pred,
             'y': y,
