@@ -6,19 +6,6 @@ import torch as T
 import torch.nn as nn
 import torch.nn.functional as F
 
-from tqdm.auto import trange
-
-
-def fit(model, data_gen, its, optim_kw={}):
-    tr = trange(its)
-
-    for _ in tr:
-        batch = next(data_gen)
-        loss, info = model.optim_step(batch, optim_kw)
-        tr.set_description(f'Loss: {loss:0.6f}')
-
-        yield loss, info
-
 
 class Module(nn.Module):
     def __init__(self):

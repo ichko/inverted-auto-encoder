@@ -95,6 +95,10 @@ def imshow(imgs, figsize=8):
         figsize = figsize, figsize
 
     num_dims = len(imgs.shape)
+    if num_dims == 3:
+        imgs = imgs[np.newaxis, ...]
+
+    num_dims = len(imgs.shape)
     if num_dims == 4 or num_dims == 5:
         imgs = imgs[np.newaxis, np.newaxis, ...]
 
@@ -109,7 +113,7 @@ def imshow(imgs, figsize=8):
             ax = fig.add_subplot(rows, cols, r * cols + c + 1)
             ax.set_xticks([])
             ax.set_yticks([])
-            ax.imshow(img)
+            ax.imshow(img, cmap='viridis')
 
     fig.canvas.draw()
     fig.canvas.flush_events()
