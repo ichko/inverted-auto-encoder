@@ -2,6 +2,7 @@ import math
 import numpy as np
 
 import matplotlib.pyplot as plt
+import torchvision
 import torch as T
 
 FIG = None
@@ -73,12 +74,21 @@ def concat_grid(imgs):
     if len(imgs.shape) == 4:
         imgs = auto_grid(imgs)
 
-    assert len(imgs.shape) == 5, 'imgs dims has to bg 5'
+    assert len(imgs.shape) == 5, 'imgs dims has to be 5'
 
-    rows, cols = imgs.shape[:2]
-    imgs = np.concatenate(np.split(imgs, rows, axis=0), axis=3)
-    imgs = np.concatenate(np.split(imgs, cols, axis=1), axis=4)
-    imgs = imgs[0, 0]
+    nrow = imgs.shape[0]
+    channels = imgs.shape[2]
+    imgs = imgs.reshape(imgs.shape[0] * imgs.shape[1], *imgs.shape[-3:])
+    imgs = torchvision.utils.make_grid(
+        T.tensor(imgs), nrow=nrow, padding=1, pad_value=0).np
+
+    if channels == 1:
+        imgs = imgs[:1, ]
+
+    # rows, cols = imgs.shape[:2]
+    # imgs = np.concatenate(np.split(imgs, rows, axis=0), axis=3)
+    # imgs = np.concatenate(np.split(imgs, cols, axis=1), axis=4)
+    # imgs = imgs[0, 0]
 
     imgs = np.transpose(imgs, (1, 2, 0))
     if imgs.shape[-1] == 1:
