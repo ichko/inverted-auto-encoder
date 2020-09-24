@@ -24,14 +24,14 @@ class MsgEncoder(tu.Module):
             # nn.Dropout(0.2),
             tu.deconv_block(128, 64, ks=5, s=1, p=2),
             # nn.Dropout(0.3),
-            tu.deconv_block(64, 32, ks=5, s=1, p=2),
-            tu.deconv_block(32, 16, ks=5, s=2, p=1),
+            tu.deconv_block(64, 64, ks=5, s=1, p=2),
+            tu.deconv_block(64, 64, ks=5, s=2, p=1),
             # nn.Dropout(0.3),
-            tu.deconv_block(16, 8, ks=5, s=1, p=2),
-            tu.deconv_block(8, 8, ks=5, s=2, p=2),
+            tu.deconv_block(64, 32, ks=5, s=1, p=2),
+            tu.deconv_block(32, 32, ks=5, s=1, p=2),
             # nn.Dropout(0.01),
-            tu.deconv_block(8, 4, ks=5, s=2, p=2),
-            tu.deconv_block(4, img_channels, ks=4, s=2, p=0, a=nn.Sigmoid()),
+            tu.deconv_block(32, 16, ks=5, s=2, p=2),
+            tu.deconv_block(16, img_channels, ks=4, s=2, p=0, a=nn.Sigmoid()),
         )
 
     def forward(self, z):
@@ -64,6 +64,19 @@ class ReverseAE(tu.Module):
         imgs = self.encoder(self.sample(bs=1))
         self.decoder(imgs)
 
+        self.noise = nn.Sequential(
+            # kornia.augmentation.RandomHorizontalFlip(0.5),
+            # kornia.augmentation.RandomVerticalFlip(0.5),
+            kornia.augmentation.RandomAffine(
+                degrees=30,
+                translate=[0.1, 0.1],
+                scale=[0.9, 1.1],
+                shear=[-10, 10],
+            ),
+            kornia.augmentation.RandomPerspective(0.5, p=0.5),
+
+        )
+
     def get_data_gen(self, bs):
         while True:
             X = self.sample(bs)
@@ -83,16 +96,9 @@ class ReverseAE(tu.Module):
 
     def optim_forward(self, X):
         def apply_noise(t):
-            bs = t.shape[0]
+            noise = T.randn_like(t).to(self.device) + 1
 
-            noise = T.randn_like(t).to(self.device) * 1
-            offsets = T.randn(bs, 2).to(self.device) * t.shape[-1] * 0.1
-            angles = T.randn(bs).to(self.device) * 30
-            scales = T.randn(bs).to(self.device) / 5 + 1
-
-            t = kornia.rotate(t, angles)
-            t = kornia.scale(t, scales)
-            t = kornia.translate(t, offsets)
+            t = self.noise(t)
             t = t + noise
 
             return t
@@ -107,16 +113,21 @@ class ReverseAE(tu.Module):
 if __name__ == "__main__":
     from datetime import datetime
 
-    msg_size = 512
-    model = ReverseAE(msg_size, img_channels=3)
+    msg_size = 48
+
+    model = ReverseAE(msg_size, img_channels=1)
     model = model.to('cuda')
     model.make_persisted('.models/glyph-ae.h5')
 
     epochs = 5
     model.configure_optim(lr=0.001, noise_size=1)
 
+    print(model.summary())
+
     msgs = model.sample(100)
     run_id = f'img_{datetime.now()}'
+    imgs = model.encoder(msgs)
+    print(imgs.shape)
 
     with vis.fig([12, 12]) as ctx, mp.fit(
         model=model,
@@ -133,6 +144,6 @@ if __name__ == "__main__":
             imgs = model.encoder(msgs)
             imgs.reshape(10, 10, *imgs.shape[-3:]).imshow()
 
-            plt.savefig(f'.imgs/screen_{run_id}.png')
+            plt.savefig(f'.imgs/screen_{run_id}.png', bbox_inches='tight')
 
     model.persist()
