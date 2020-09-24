@@ -10,6 +10,9 @@ import utils.mp as mp
 
 from tqdm.auto import trange
 
+import kornia
+import random
+
 
 class MsgEncoder(tu.Module):
     def __init__(self, msg_size, img_channels):
@@ -18,15 +21,15 @@ class MsgEncoder(tu.Module):
         self.net = nn.Sequential(
             tu.reshape(-1, msg_size, 1, 1),
             tu.deconv_block(msg_size, 128, ks=5, s=2, p=1),
-            nn.Dropout(0.2),
+            # nn.Dropout(0.2),
             tu.deconv_block(128, 64, ks=5, s=1, p=2),
-            nn.Dropout(0.5),
+            # nn.Dropout(0.3),
             tu.deconv_block(64, 32, ks=5, s=1, p=2),
             tu.deconv_block(32, 16, ks=5, s=2, p=1),
-            nn.Dropout(0.3),
+            # nn.Dropout(0.3),
             tu.deconv_block(16, 8, ks=5, s=1, p=2),
-            tu.deconv_block(8, 8, ks=5, s=1, p=2),
-            nn.Dropout(0.01),
+            tu.deconv_block(8, 8, ks=5, s=2, p=2),
+            # nn.Dropout(0.01),
             tu.deconv_block(8, 4, ks=5, s=2, p=2),
             tu.deconv_block(4, img_channels, ks=4, s=2, p=0, a=nn.Sigmoid()),
         )
@@ -40,7 +43,7 @@ class MsgDecoder(tu.Module):
         super().__init__()
 
         self.net = tu.conv_to_flat(
-            [in_channels, 128, 64, 64, 32, 16],
+            [in_channels, 128, 128, 64, 32, 32],
             msg_size,
             ks=3,
             s=2,
@@ -67,7 +70,7 @@ class ReverseAE(tu.Module):
             yield X, X
 
     def sample(self, bs):
-        return T.rand(bs, self.msg_size).to(self.device)
+        return T.randn(bs, self.msg_size).to(self.device)
 
     def forward(self, bs):
         msg = self.sample(bs)
@@ -80,9 +83,19 @@ class ReverseAE(tu.Module):
 
     def optim_forward(self, X):
         def apply_noise(t):
-            noise = T.normal(0, 5, t.shape)
-            noise = noise.to(self.device)
-            return t * noise
+            bs = t.shape[0]
+
+            noise = T.randn_like(t).to(self.device) * 1
+            offsets = T.randn(bs, 2).to(self.device) * t.shape[-1] * 0.1
+            angles = T.randn(bs).to(self.device) * 30
+            scales = T.randn(bs).to(self.device) / 5 + 1
+
+            t = kornia.rotate(t, angles)
+            t = kornia.scale(t, scales)
+            t = kornia.translate(t, offsets)
+            t = t + noise
+
+            return t
 
         img = self.encoder(X)
         img = apply_noise(img)
@@ -92,17 +105,20 @@ class ReverseAE(tu.Module):
 
 
 if __name__ == "__main__":
-    msg_size = 32
-    model = ReverseAE(msg_size, img_channels=1)
+    from datetime import datetime
+
+    msg_size = 512
+    model = ReverseAE(msg_size, img_channels=3)
     model = model.to('cuda')
     model.make_persisted('.models/glyph-ae.h5')
 
     epochs = 5
     model.configure_optim(lr=0.001, noise_size=1)
 
-    msgs = model.sample(36)
+    msgs = model.sample(100)
+    run_id = f'img_{datetime.now()}'
 
-    with vis.fig([12, 5]) as ctx, mp.fit(
+    with vis.fig([12, 12]) as ctx, mp.fit(
         model=model,
         its=512 * epochs,
         data_gen=model.get_data_gen(bs=128),
@@ -112,12 +128,11 @@ if __name__ == "__main__":
             # epoch = fit.it // epochs
             # model.configure_optim(lr=0.001, noise_size=0.5)
 
-            if i % 500 == 0:
-                model.persist()
-                # ctx.clear()
-                imgs = model.encoder(msgs)
-                imgs.reshape(3, 12, 1, 28, 28).imshow()
+            model.persist()
+            # ctx.clear()
+            imgs = model.encoder(msgs)
+            imgs.reshape(10, 10, *imgs.shape[-3:]).imshow()
 
-                # plt.savefig('.imgs/screen.png')
+            plt.savefig(f'.imgs/screen_{run_id}.png')
 
     model.persist()
