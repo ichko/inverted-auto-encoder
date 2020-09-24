@@ -7,10 +7,10 @@ import torchvision
 from torchvision import transforms
 
 
-def get_mnist_iterator(bs):
+def get_mnist_iterator(bs, train=False):
     dataset = torchvision.datasets.MNIST(
         root='.data',
-        train=True,
+        train=train,
         transform=transforms.Compose([
             transforms.ToTensor(),
             torchvision.transforms.Normalize((0.1307,), (0.3081,))
@@ -31,12 +31,6 @@ def get_mnist_iterator(bs):
             it = iter(dl)
 
 
-X, y = next(get_mnist_iterator(bs=2 ** 12))
-print(X.shape)
-
-X_flat = X.reshape(-1, 28 * 28)
-
-
 class Classifier(tu.Module):
     def __init__(self, in_size):
         super().__init__()
@@ -49,32 +43,35 @@ class Classifier(tu.Module):
 if __name__ == '__main__':
     from sklearn.neural_network import MLPClassifier
 
-    msg_size = 32
+    X_train, y_train = next(get_mnist_iterator(bs=2 ** 15, train=True))
+    X_test, y_test = next(get_mnist_iterator(bs=2 ** 12, train=False))
+
+    msg_size = 48
     model = ReverseAE(msg_size, img_channels=1)
     model = model.to('cuda')
     model.make_persisted('.models/glyph-ae.h5')
     model.preload_weights()
 
-    X_repr = model.decoder(X.to('cuda'))
+    # 0.80877685546875
+    # 0.7255859375
 
-    X_repr = X_repr.np
-    # X_repr = X_flat.np
-
-    y = y.np
+    # 0.972381591796875
+    # 0.91845703125
 
     clf = MLPClassifier(
         solver='adam',
         alpha=1e-5,
         hidden_layer_sizes=(100, 10),
-        max_iter=5000,
+        max_iter=500,
         random_state=1,
         shuffle=True,
         verbose=1,
         n_iter_no_change=9999999999,
     )
 
-    clf.fit(X_repr, y)
+    clf.fit(model.decoder(X_train.to('cuda')).np, y_train.np)
 
-    print(clf.score(X_repr, y))
-
-    print(X_repr.shape)
+    score_train = clf.score(model.decoder(X_train.to('cuda')).np, y_train.np)
+    score_test = clf.score(model.decoder(X_test.to('cuda')).np, y_test.np)
+    print(score_train)
+    print(score_test)
