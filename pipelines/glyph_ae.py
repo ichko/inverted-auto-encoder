@@ -80,7 +80,7 @@ class ReverseAE(tu.Module):
 
     def optim_forward(self, X):
         def apply_noise(t):
-            noise = T.normal(0, 1, t.shape)
+            noise = T.normal(0, 5, t.shape)
             noise = noise.to(self.device)
             return t * noise
 
@@ -95,6 +95,7 @@ if __name__ == "__main__":
     msg_size = 32
     model = ReverseAE(msg_size, img_channels=1)
     model = model.to('cuda')
+    model.make_persisted('.models/glyph-ae.h5')
 
     epochs = 5
     model.configure_optim(lr=0.001, noise_size=1)
@@ -112,8 +113,11 @@ if __name__ == "__main__":
             # model.configure_optim(lr=0.001, noise_size=0.5)
 
             if i % 500 == 0:
+                model.persist()
                 # ctx.clear()
                 imgs = model.encoder(msgs)
                 imgs.reshape(3, 12, 1, 28, 28).imshow()
 
-                plt.savefig('.imgs/screen.png')
+                # plt.savefig('.imgs/screen.png')
+
+    model.persist()
