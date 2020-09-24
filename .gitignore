@@ -1,7 +1,8 @@
-MNIST
 .ipynb_checkpoints
 logs_gan
 .vscode
 __pycache__
 
 .imgs
+.models
+.data
