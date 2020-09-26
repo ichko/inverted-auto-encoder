@@ -26,5 +26,4 @@ def get_mnist_iterator(bs, train=False, repeat=False):
         except StopIteration as e:
             if repeat:
                 it = iter(dl)
-            else:
-                raise e
+            return e
