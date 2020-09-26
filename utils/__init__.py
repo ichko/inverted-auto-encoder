@@ -8,6 +8,16 @@ import numpy as np
 from tqdm.auto import trange
 
 
+def pipe(*funcs):
+    def wrapped(*args, **kwargs):
+        x = funcs[0](*args, **kwargs)
+        for f in funcs[1:]:
+            x = f(x)
+        return x
+
+    return wrapped
+
+
 def fit(model, data_gen, its, optim_kw={}):
     tr = trange(its)
 
