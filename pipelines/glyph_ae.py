@@ -7,6 +7,7 @@ import numpy as np
 import utils.nn as tu
 import utils.vis as vis
 import utils.mp as mp
+import utils as ut
 
 from tqdm.auto import trange
 
@@ -68,12 +69,12 @@ class ReverseAE(tu.Module):
             # kornia.augmentation.RandomHorizontalFlip(0.5),
             # kornia.augmentation.RandomVerticalFlip(0.5),
             kornia.augmentation.RandomAffine(
-                degrees=30,
+                degrees=10,
                 translate=[0.1, 0.1],
-                scale=[0.9, 1.1],
-                shear=[-10, 10],
+                scale=[0.8, 1.2],
+                shear=[-15, 15],
             ),
-            kornia.augmentation.RandomPerspective(0.5, p=0.5),
+            kornia.augmentation.RandomPerspective(0.6, p=0.5),
 
         )
 
@@ -113,7 +114,7 @@ class ReverseAE(tu.Module):
 if __name__ == "__main__":
     from datetime import datetime
 
-    msg_size = 48
+    msg_size = 128
 
     model = ReverseAE(msg_size, img_channels=1)
     model = model.to('cuda')
@@ -124,12 +125,24 @@ if __name__ == "__main__":
 
     print(model.summary())
 
+    X_mnist, y_mnist = next(ut.data.get_mnist_iterator(bs=1024, train=True))
+    X_mnist = X_mnist.to('cuda')
+    y_mnist = y_mnist.to('cuda')
+
+    X = []
+    for i in range(10):
+        x = X_mnist[y_mnist == i]
+        X.append(x[:10])
+    X = T.cat(X).to('cuda')
+    print(X.shape)
+
     msgs = model.sample(100)
     run_id = f'img_{datetime.now()}'
     imgs = model.encoder(msgs)
+
     print(imgs.shape)
 
-    with vis.fig([12, 12]) as ctx, mp.fit(
+    with vis.fig([15, 5]) as ctx, mp.fit_generator(
         model=model,
         its=512 * epochs,
         data_gen=model.get_data_gen(bs=128),
@@ -140,9 +153,18 @@ if __name__ == "__main__":
             # model.configure_optim(lr=0.001, noise_size=0.5)
 
             model.persist()
+
+            mnist_msg = model.decoder(X)
+            mnist_recon = model.encoder(mnist_msg)
+
             # ctx.clear()
             imgs = model.encoder(msgs)
-            imgs.reshape(10, 10, *imgs.shape[-3:]).imshow()
+
+            T.cat([
+                imgs.view(1, 1, 10, 10, *imgs.shape[-3:]),
+                X.view(1, 1, 10, 10, *X_mnist.shape[-3:]),
+                mnist_recon.view(1, 1, 10, 10, *mnist_recon.shape[-3:])
+            ], dim=1).imshow()
 
             plt.savefig(f'.imgs/screen_{run_id}.png', bbox_inches='tight')
 

@@ -80,7 +80,7 @@ def concat_grid(imgs):
     channels = imgs.shape[2]
     imgs = imgs.reshape(imgs.shape[0] * imgs.shape[1], *imgs.shape[-3:])
     imgs = torchvision.utils.make_grid(
-        T.tensor(imgs), nrow=nrow, padding=1, pad_value=0).np
+        T.tensor(imgs), nrow=nrow, padding=2, pad_value=0).np
 
     if channels == 1:
         imgs = imgs[:1, ]

@@ -6,7 +6,14 @@ import atexit
 from tqdm.auto import trange
 
 
-def fit(model, data_gen, its, optim_kw={}):
+def fit(model, data_gen, epochs, optim_kw={}):
+    tr = trange(epochs)
+    for e in tr:
+        tr.set_description(f'Epoch {e:03}')
+        fit_generator(model, data_gen, len(data_gen), optim_kw)
+
+
+def fit_generator(model, data_gen, its, optim_kw={}):
     class FitCTX:
         def __enter__(self):
             self.loss = 999
@@ -32,7 +39,11 @@ def fit(model, data_gen, its, optim_kw={}):
                 if self.should_terminate:
                     return
 
-                batch = next(data_gen)
+                try:
+                    batch = next(data_gen)
+                except StopIteration as _e:
+                    return
+
                 loss, info = model.optim_step(batch, optim_kw)
                 tr.set_description(f'Loss: {loss:0.6f}')
                 self.loss, self.info = loss, info

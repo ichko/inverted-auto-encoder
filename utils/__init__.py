@@ -1,6 +1,7 @@
 import utils.nn as nn
 import utils.mp as mp
 import utils.vis as vis
+import utils.data as data
 
 import torch as T
 import numpy as np
