@@ -5,21 +5,22 @@ from collections import deque
 import atexit
 from tqdm.auto import tqdm, trange
 
+import torch as T
+
 
 def fit(model, dataloader, epochs=1, its=None, optim_kw={}):
+    if hasattr(dataloader, 'train'):
+        train = dataloader['train']
+        val = dataloader['val']
+    else:
+        train = dataloader
+        val = None
+
     if its is None:
         try:
-            its = len(dataloader)
+            its = len(train)
         except Exception:
             pass
-
-    def its_iter():
-        if its is None:
-            while True:
-                yield None
-        else:
-            for _ in range(its):
-                yield None
 
     class FitCTX:
         def __enter__(self):
@@ -43,17 +44,12 @@ def fit(model, dataloader, epochs=1, its=None, optim_kw={}):
             self.model = model
 
             for e in range(epochs):
-                data_gen = iter(dataloader)
+                tr = tqdm(iter(train), total=its)
+                for i, batch in enumerate(tr):
+                    if self.should_terminate:
+                        return
 
-                tr = tqdm(its_iter(), total=its)
-                tr_it = iter(tr)
-                i = 0
-
-                while not self.should_terminate:
-                    try:
-                        next(tr_it)
-                        batch = next(data_gen)
-                    except StopIteration as _e:
+                    if i >= its:
                         break
 
                     loss, info = model.optim_step(batch, optim_kw)
@@ -61,12 +57,23 @@ def fit(model, dataloader, epochs=1, its=None, optim_kw={}):
                     metrics = {'loss': f'{loss:0.6f}', **metrics}
 
                     tr.set_description(
-                        f'[{(e + 1):03}/{epochs}] | {metrics}'
+                        f'T [{(e + 1):03}/{epochs}] | {metrics}'
                     )
 
                     self.loss, self.info = loss, info
                     self.it = i
-                    i += 1
+
+                if val is not None:
+                    with T.no_grad():
+                        tr = tqdm(val)
+                        for batch in iter(tr):
+                            loss, info = model.optim_step(batch, optim_kw)
+                            metrics = info['metrics']
+                            metrics = {'loss': f'{loss:0.6f}', **metrics}
+
+                            tr.set_description(
+                                f'V [{(e + 1):03}/{epochs}] | {metrics}'
+                            )
 
         def __exit__(self, exc_type, exc_val, exc_tb):
             self.terminate()

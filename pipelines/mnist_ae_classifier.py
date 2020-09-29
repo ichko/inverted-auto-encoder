@@ -1,4 +1,3 @@
-from pipelines.glyph_ae import ReverseAE
 import utils.nn as tu
 import utils as ut
 
@@ -7,7 +6,7 @@ import torch.nn as nn
 import torchvision
 from torchvision import transforms
 
-from pipelines.glyph_ae import MsgEncoder, MsgDecoder
+from pipelines.glyph_ae import MsgEncoder, MsgDecoder, ReverseAE
 
 
 class Classifier(tu.Module):
@@ -15,7 +14,7 @@ class Classifier(tu.Module):
         super().__init__()
         # self.ae = T.load('.models/glyph-ae.h5_whole.h5')
 
-        msg_size = 128
+        msg_size = 2
         self.ae = ReverseAE(msg_size, img_channels=1)
 
         self.ae.requires_grad = False
@@ -34,8 +33,8 @@ class Classifier(tu.Module):
 
             self.net = nn.Sequential(
                 nn.Flatten(),
-                tu.dense(i=in_size, o=100),
-                tu.dense(i=100, o=10),
+                # tu.dense(i=in_size, o=100),
+                tu.dense(i=in_size, o=10),
             ).to(x.device)
 
         return self.net(x)
@@ -49,9 +48,11 @@ if __name__ == '__main__':
 
     with ut.mp.fit(
         model=Classifier().to('cuda'),
-        dataloader=data(bs=128, train=True),
+        dataloader={
+            'train': data(bs=128, train=True),
+            'val': data(bs=128, train=False)
+        },
         epochs=10,
-        its=60_000 // 128,
         optim_kw={'lr': 0.001}
     ) as fit:
         fit.join()

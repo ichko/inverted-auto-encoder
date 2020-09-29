@@ -114,7 +114,7 @@ class ReverseAE(tu.Module):
 if __name__ == "__main__":
     from datetime import datetime
 
-    msg_size = 128
+    msg_size = 64
 
     model = ReverseAE(msg_size, img_channels=1)
     model = model.to('cuda')
@@ -140,7 +140,7 @@ if __name__ == "__main__":
 
     with vis.fig([15, 5]) as ctx, mp.fit(
         model=model,
-        its=1,
+        its=512 * 5,
         dataloader=model.get_data_gen(bs=128),
     ) as fit:
         for i in fit.wait:
