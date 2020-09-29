@@ -2,28 +2,39 @@ import torch as T
 import torchvision
 import torchvision.transforms as transforms
 
+from utils.common import partial
+from functools import wraps
 
-def get_mnist_iterator(bs, train=False, repeat=False):
+
+@partial
+def map_it(mapper, dl):
+    class Wrapper:
+        def __getattr__(self, name):
+            return getattr(dl, name)
+
+        def __len__(self):
+            return len(dl)
+
+        def __iter__(self):
+            return map(mapper, dl)
+
+    return wraps(dl)(Wrapper())
+
+
+def get_mnist_dl(bs, train=False):
     dataset = torchvision.datasets.MNIST(
         root='.data',
         train=train,
         transform=transforms.Compose([
             transforms.ToTensor(),
-            torchvision.transforms.Normalize((0.1307,), (0.3081,))
+            transforms.Normalize((0.1307,), (0.3081,)),
         ]),
         download=True
     )
     dl = T.utils.data.DataLoader(
         dataset=dataset,
         batch_size=bs,
-        # shuffle=True
+        shuffle=True,
     )
-    it = iter(dl)
 
-    while True:
-        try:
-            yield it.next()
-        except StopIteration as e:
-            if repeat:
-                it = iter(dl)
-            return e
+    return dl

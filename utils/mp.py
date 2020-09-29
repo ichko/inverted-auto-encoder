@@ -6,19 +6,24 @@ import atexit
 from tqdm.auto import tqdm, trange
 
 
-def fit(model, data_gen, epochs=1, its=None, optim_kw={}):
+def fit(model, dataloader, epochs=1, its=None, optim_kw={}):
     if its is None:
         try:
-            its = len(data_gen)
+            its = len(dataloader)
         except Exception:
             pass
 
-    def inf():
-        while True:
-            yield None
+    def its_iter():
+        if its is None:
+            while True:
+                yield None
+        else:
+            for _ in range(its):
+                yield None
 
     class FitCTX:
         def __enter__(self):
+            self.model = model
             self.loss = 999
             self.info = {}
             self.should_terminate = False
@@ -37,22 +42,28 @@ def fit(model, data_gen, epochs=1, its=None, optim_kw={}):
         def _step(self):
             self.model = model
 
-            tr_ep = trange(epochs)
-            for e in tr_ep:
-                tr_ep.set_description(f'Epoch {e:03}')
+            for e in range(epochs):
+                data_gen = iter(dataloader)
 
-                tr = tqdm(inf(), total=its)
+                tr = tqdm(its_iter(), total=its)
                 tr_it = iter(tr)
                 i = 0
+
                 while not self.should_terminate:
                     try:
                         next(tr_it)
                         batch = next(data_gen)
                     except StopIteration as _e:
-                        return
+                        break
 
                     loss, info = model.optim_step(batch, optim_kw)
-                    tr.set_description(f'Loss: {loss:0.6f}')
+                    metrics = info['metrics']
+                    metrics = {'loss': f'{loss:0.6f}', **metrics}
+
+                    tr.set_description(
+                        f'[{(e + 1):03}/{epochs}] | {metrics}'
+                    )
+
                     self.loss, self.info = loss, info
                     self.it = i
                     i += 1
