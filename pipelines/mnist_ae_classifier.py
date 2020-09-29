@@ -10,19 +10,20 @@ from pipelines.glyph_ae import MsgEncoder, MsgDecoder, ReverseAE
 
 
 class Classifier(tu.Module):
-    def __init__(self):
+    def __init__(self, pretrained):
         super().__init__()
-        # self.ae = T.load('.models/glyph-ae.h5_whole.h5')
+        if pretrained:
+            self.ae = T.load('.models/glyph-ae.h5_whole.h5')
+        else:
+            msg_size = 64
+            self.ae = ReverseAE(msg_size, img_channels=1)
 
-        msg_size = 2
-        self.ae = ReverseAE(msg_size, img_channels=1)
-
-        self.ae.requires_grad = False
+        # self.ae.requires_grad = False
 
     def metrics(self, loss, info):
         y_pred = T.argmax(info['y_pred'], dim=1)
         acc = (y_pred == info['y']).float().sum() / len(y_pred)
-        return {'acc': f'{acc.item():0.5f}'}
+        return {'acc': acc.item()}
 
     def forward(self, x):
         x = self.ae.decoder(x)
@@ -47,7 +48,7 @@ if __name__ == '__main__':
     )
 
     with ut.mp.fit(
-        model=Classifier().to('cuda'),
+        model=Classifier(pretrained=False).to('cuda'),
         dataloader={
             'train': data(bs=128, train=True),
             'val': data(bs=128, train=False)

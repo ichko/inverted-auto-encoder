@@ -1,26 +1,47 @@
 import multiprocessing as mp
 import threading
 
-from collections import deque
+from collections import deque, defaultdict
 import atexit
 from tqdm.auto import tqdm, trange
 
 import torch as T
 
 
-def fit(model, dataloader, epochs=1, its=None, optim_kw={}):
-    if hasattr(dataloader, 'train'):
-        train = dataloader['train']
-        val = dataloader['val']
-    else:
-        train = dataloader
-        val = None
+def dataloader_top(dataloader):
+    for batch in dataloader:
+        return batch
 
+
+def sanity_check_model(model, dataloader, optim_kw):
+    top_batch = dataloader_top(dataloader)
+    with T.no_grad():
+        model.optim_step(top_batch)
+
+
+def get_train_val(dataloader):
+    if hasattr(dataloader, 'keys'):
+        return dataloader['train'], dataloader['val']
+    else:
+        return dataloader, None
+
+
+def try_get_its(its, dataloader):
     if its is None:
         try:
-            its = len(train)
+            return len(dataloader)
         except Exception:
             pass
+
+    return its
+
+
+def fit(model, dataloader, epochs=1, its=None, optim_kw={}):
+    train, val = get_train_val(dataloader)
+    its = try_get_its(its, train)
+
+    # Sanity check should be last!!!
+    sanity_check_model(model, train, optim_kw)
 
     class FitCTX:
         def __enter__(self):
@@ -32,6 +53,7 @@ def fit(model, dataloader, epochs=1, its=None, optim_kw={}):
 
             self.thread = threading.Thread(target=self._step)
             self.thread.start()
+            self.history = defaultdict(lambda: defaultdict(lambda: []))
             atexit.register(self.terminate)
 
             return self
@@ -45,6 +67,10 @@ def fit(model, dataloader, epochs=1, its=None, optim_kw={}):
 
             for e in range(epochs):
                 tr = tqdm(iter(train), total=its)
+
+                epoch_str = f'[{(e + 1):03}/{epochs}]'
+                metrics_sums = defaultdict(lambda: 0)
+
                 for i, batch in enumerate(tr):
                     if self.should_terminate:
                         return
@@ -53,11 +79,22 @@ def fit(model, dataloader, epochs=1, its=None, optim_kw={}):
                         break
 
                     loss, info = model.optim_step(batch, optim_kw)
-                    metrics = info['metrics']
-                    metrics = {'loss': f'{loss:0.6f}', **metrics}
+                    for k, v in {'loss': loss, **info['metrics']}.items():
+                        metrics_sums[k] += v
 
+                    avg_metric = {
+                        k: v / (i + 1)
+                        for k, v in metrics_sums.items()
+                    }
+                    for k, v in avg_metric.items():
+                        self.history['train_metrics'][k].append(v)
+
+                    description = {
+                        k: f'{v:0.5f}'
+                        for k, v in avg_metric.items()
+                    }
                     tr.set_description(
-                        f'T [{(e + 1):03}/{epochs}] | {metrics}'
+                        f'T {epoch_str} | {description}'
                     )
 
                     self.loss, self.info = loss, info
@@ -66,13 +103,25 @@ def fit(model, dataloader, epochs=1, its=None, optim_kw={}):
                 if val is not None:
                     with T.no_grad():
                         tr = tqdm(val)
-                        for batch in iter(tr):
+                        metrics_sums = defaultdict(lambda: 0)
+                        for i, batch in enumerate(iter(tr)):
                             loss, info = model.optim_step(batch, optim_kw)
-                            metrics = info['metrics']
-                            metrics = {'loss': f'{loss:0.6f}', **metrics}
+                            for k, v in {'loss': loss, **info['metrics']}.items():
+                                metrics_sums[k] += v
 
+                            avg_metric = {
+                                k: v / (i + 1)
+                                for k, v in metrics_sums.items()
+                            }
+                            for k, v in avg_metric.items():
+                                self.history['val_metrics'][k].append(v)
+
+                            description = {
+                                k: f'{v:0.5f}'
+                                for k, v in avg_metric.items()
+                            }
                             tr.set_description(
-                                f'V [{(e + 1):03}/{epochs}] | {metrics}'
+                                f'V {epoch_str} | {description}'
                             )
 
         def __exit__(self, exc_type, exc_val, exc_tb):

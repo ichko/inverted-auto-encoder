@@ -91,10 +91,6 @@ class ReverseAE(tu.Module):
         img = self.encoder(msg)
         return img
 
-    def configure_optim(self, lr, noise_size):
-        self.noise_size = noise_size
-        self.optim = T.optim.Adam(self.parameters(), lr)
-
     def optim_forward(self, X):
         def apply_noise(t):
             noise = T.randn_like(t).to(self.device)
@@ -120,8 +116,6 @@ if __name__ == "__main__":
     model = model.to('cuda')
     model.make_persisted('.models/glyph-ae.h5')
 
-    model.configure_optim(lr=0.001, noise_size=1)
-
     print(model.summary())
 
     X_mnist, y_mnist = next(iter(ut.data.get_mnist_dl(bs=1024, train=True)))
@@ -142,6 +136,7 @@ if __name__ == "__main__":
         model=model,
         its=512 * 5,
         dataloader=model.get_data_gen(bs=128),
+        optim_kw={'lr': 0.0001}
     ) as fit:
         for i in fit.wait:
             model.persist()
