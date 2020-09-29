@@ -20,7 +20,7 @@ class MsgEncoder(tu.Module):
         super().__init__()
 
         self.net = nn.Sequential(
-            tu.reshape(-1, msg_size, 1, 1),
+            tu.Reshape(-1, msg_size, 1, 1),
             tu.deconv_block(msg_size, 128, ks=5, s=2, p=1),
             # nn.Dropout(0.2),
             tu.deconv_block(128, 64, ks=5, s=1, p=2),
@@ -43,7 +43,7 @@ class MsgDecoder(tu.Module):
     def __init__(self, in_channels, msg_size):
         super().__init__()
 
-        self.net = tu.conv_to_flat(
+        self.net = tu.ConvToFlat(
             [in_channels, 128, 128, 64, 32, 32],
             msg_size,
             ks=3,
@@ -97,7 +97,7 @@ class ReverseAE(tu.Module):
 
     def optim_forward(self, X):
         def apply_noise(t):
-            noise = T.randn_like(t).to(self.device) + 1
+            noise = T.randn_like(t).to(self.device)
 
             t = self.noise(t)
             t = t + noise
@@ -120,12 +120,11 @@ if __name__ == "__main__":
     model = model.to('cuda')
     model.make_persisted('.models/glyph-ae.h5')
 
-    epochs = 5
     model.configure_optim(lr=0.001, noise_size=1)
 
     print(model.summary())
 
-    X_mnist, y_mnist = next(ut.data.get_mnist_iterator(bs=1024, train=True))
+    X_mnist, y_mnist = next(iter(ut.data.get_mnist_dl(bs=1024, train=True)))
     X_mnist = X_mnist.to('cuda')
     y_mnist = y_mnist.to('cuda')
 
@@ -134,30 +133,22 @@ if __name__ == "__main__":
         x = X_mnist[y_mnist == i]
         X.append(x[:10])
     X = T.cat(X).to('cuda')
-    print(X.shape)
 
     msgs = model.sample(100)
     run_id = f'img_{datetime.now()}'
     imgs = model.encoder(msgs)
 
-    print(imgs.shape)
-
-    with vis.fig([15, 5]) as ctx, mp.fit_generator(
+    with vis.fig([15, 5]) as ctx, mp.fit(
         model=model,
-        its=512 * epochs,
-        data_gen=model.get_data_gen(bs=128),
+        its=1,
+        dataloader=model.get_data_gen(bs=128),
     ) as fit:
-        # fit.join()
         for i in fit.wait:
-            # epoch = fit.it // epochs
-            # model.configure_optim(lr=0.001, noise_size=0.5)
-
             model.persist()
 
             mnist_msg = model.decoder(X)
             mnist_recon = model.encoder(mnist_msg)
 
-            # ctx.clear()
             imgs = model.encoder(msgs)
 
             T.cat([
@@ -168,4 +159,4 @@ if __name__ == "__main__":
 
             plt.savefig(f'.imgs/screen_{run_id}.png', bbox_inches='tight')
 
-    model.persist()
+    model.save()

@@ -2,20 +2,11 @@ import utils.nn as nn
 import utils.mp as mp
 import utils.vis as vis
 import utils.data as data
+import utils.common as common
 
 import torch as T
 import numpy as np
 from tqdm.auto import trange
-
-
-def pipe(*funcs):
-    def wrapped(*args, **kwargs):
-        x = funcs[0](*args, **kwargs)
-        for f in funcs[1:]:
-            x = f(x)
-        return x
-
-    return wrapped
 
 
 def fit(model, data_gen, its, optim_kw={}):
