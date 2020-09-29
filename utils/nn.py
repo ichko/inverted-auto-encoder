@@ -35,6 +35,9 @@ class Module(nn.Module):
     def configure_optim(self, lr):
         self.optim = T.optim.Adam(self.parameters(), lr=lr)
 
+    def metrics(self, _loss, _info):
+        return {}
+
     def optim_step(self, batch, optim_kw={}):
         X, y = batch
 
@@ -49,13 +52,26 @@ class Module(nn.Module):
             loss.backward()
             self.optim.step()
 
+        metrics = self.metrics(loss.item(), {
+            'X': X,
+            'y_pred': y_pred,
+            'y': y,
+        })
+
         return loss.item(), {
+            'metrics': metrics,
             'X': X,
             'y_pred': y_pred,
             'y': y,
         }
 
-    def summary(self):
+    def summary(self, input_size=-1):
+        try:
+            from torchsummary import summary
+            summary(self, input_size)
+        except Exception:
+            pass
+
         result = f' > {self.name[:38]:<38} | {count_parameters(self):09,}\n'
         for name, module in self.named_children():
             type = module._get_name()
@@ -91,7 +107,7 @@ class DenseAE(Module):
                 dense(self.hid_size, 16),
                 dense(16, 128),
                 dense(128, 28 * 28, a=None),
-                reshape(-1, *x.shape[1:]),
+                Reshape(-1, *x.shape[1:]),
             )
 
             self.criterion = nn.MSELoss()
@@ -159,12 +175,13 @@ def dense(i, o, a=get_activation()):
     return l if a is None else nn.Sequential(l, a)
 
 
-def reshape(*shape):
-    class Reshaper(nn.Module):
-        def forward(self, x):
-            return x.reshape(shape)
+class Reshape(nn.Module):
+    def __init__(self, *shape):
+        super().__init__()
+        self.shape = shape
 
-    return Reshaper()
+    def forward(self, x):
+        return x.reshape(self.shape)
 
 
 def lam(forward):
@@ -239,45 +256,53 @@ def conv_decoder(sizes, ks=4, s=2, a=get_activation()):
     return stack_conv_blocks(deconv_block, sizes, ks, a, s=s, p=ks // 2 - 1)
 
 
-def conv_to_flat(
-    channel_sizes,
-    out_size,
-    ks=4,
-    s=2,
-    a=get_activation(),
-):
-    class ConvEncoder(nn.Module):
-        def forward(self, x):
-            if not hasattr(self, 'net'):
-                input_size = x.shape[-2:]
-                input_channels = channel_sizes[0]
-                self.encoder = conv_transform(channel_sizes, ks, s, a)
+class ConvToFlat(nn.Module):
+    def __init__(
+        self,
+        channel_sizes,
+        out_size,
+        ks=4,
+        s=2,
+        a=get_activation(),
+    ):
+        super().__init__()
+        self.channel_sizes = channel_sizes
+        self.out_size = out_size
+        self.ks = ks
+        self.s = s
+        self.a = a
 
-                self.encoder_out_shape = compute_output_shape(
-                    self.encoder,
-                    (input_channels, *input_size),
-                )
+    def forward(self, x):
+        if not hasattr(self, 'net'):
+            input_size = x.shape[-2:]
+            input_channels = self.channel_sizes[0]
+            self.encoder = conv_transform(
+                self.channel_sizes, self.ks, self.s, self.a
+            )
 
-                self.flat_encoder_out_size = np.prod(
-                    self.encoder_out_shape[-3:]
-                )
+            self.encoder_out_shape = compute_output_shape(
+                self.encoder,
+                (input_channels, *input_size),
+            )
 
-                self.encoded_to_flat = nn.Sequential(
-                    nn.Flatten(),
-                    a,
-                    nn.Linear(self.flat_encoder_out_size, out_size),
-                )
+            self.flat_encoder_out_size = np.prod(
+                self.encoder_out_shape[-3:]
+            )
 
-                self.net = nn.Sequential(
-                    self.encoder,
-                    self.encoded_to_flat,
-                )
+            self.encoded_to_flat = nn.Sequential(
+                nn.Flatten(),
+                self.a,
+                nn.Linear(self.flat_encoder_out_size, self.out_size),
+            )
 
-                self.net.to(x.device)
+            self.net = nn.Sequential(
+                self.encoder,
+                self.encoded_to_flat,
+            )
 
-            return self.net(x)
+            self.net.to(x.device)
 
-    return ConvEncoder()
+        return self.net(x)
 
 
 def compute_output_shape(net, frame_shape):
@@ -309,7 +334,7 @@ def spatial_transformer(i, num_channels, only_translations=False):
             self.num_channels = num_channels
             self.locator = nn.Sequential(
                 nn.Linear(i, num_channels * 2 * 3),
-                reshape(-1, 2, 3),
+                Reshape(-1, 2, 3),
             )
 
             self.device = self.locator[0].bias.device
