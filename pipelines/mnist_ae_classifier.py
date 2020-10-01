@@ -18,7 +18,7 @@ class Classifier(tu.Module):
             msg_size = 64
             self.ae = ReverseAE(msg_size, img_channels=1)
 
-        # self.ae.requires_grad = False
+        self.ae.requires_grad = False
 
     def metrics(self, loss, info):
         y_pred = T.argmax(info['y_pred'], dim=1)
@@ -42,18 +42,34 @@ class Classifier(tu.Module):
 
 
 if __name__ == '__main__':
+    from utils.logger import WAndBLogger
+
     data = ut.common.pipe(
         ut.data.get_mnist_dl,
         ut.data.map_it(lambda batch: [t.to('cuda') for t in batch]),
     )
 
+    pretrained = False
+    model = Classifier(pretrained=pretrained).to('cuda')
+
+    pretrained_description = 'pretrained' if pretrained else 'scratch'
+    logger = WAndBLogger(
+        project='zero_shot_structure',
+        name=f'mnist_classifier_fixed_{pretrained_description}',
+        model=model,
+        hparams={},
+        type='video',
+    )
+
     with ut.mp.fit(
-        model=Classifier(pretrained=False).to('cuda'),
+        model=model,
         dataloader={
             'train': data(bs=128, train=True),
             'val': data(bs=128, train=False)
         },
         epochs=10,
-        optim_kw={'lr': 0.001}
+        optim_kw={'lr': 0.001},
+        logger=logger,
     ) as fit:
+        fit.model.summary(input_size=(1, 28, 28))
         fit.join()

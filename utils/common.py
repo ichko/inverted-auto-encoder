@@ -1,4 +1,8 @@
+import sys
 from functools import wraps
+
+
+IS_DEBUG = '--debug' in sys.argv
 
 
 def partial(func):

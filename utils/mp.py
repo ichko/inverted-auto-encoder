@@ -36,7 +36,7 @@ def try_get_its(its, dataloader):
     return its
 
 
-def fit(model, dataloader, epochs=1, its=None, optim_kw={}):
+def fit(model, dataloader, epochs=1, its=None, optim_kw={}, logger=None):
     train, val = get_train_val(dataloader)
     its = try_get_its(its, train)
 
@@ -100,6 +100,11 @@ def fit(model, dataloader, epochs=1, its=None, optim_kw={}):
                     self.loss, self.info = loss, info
                     self.it = i
 
+                    if logger is not None:
+                        to_log = {f'train_{k}': v[-1]
+                                  for k, v in self.history['train_metrics'].items()}
+                        logger.log(to_log)
+
                 if val is not None:
                     with T.no_grad():
                         tr = tqdm(val)
@@ -123,6 +128,11 @@ def fit(model, dataloader, epochs=1, its=None, optim_kw={}):
                             tr.set_description(
                                 f'V {epoch_str} | {description}'
                             )
+
+                        if logger is not None:
+                            to_log = {f'val_{k}': v[-1]
+                                      for k, v in self.history['val_metrics'].items()}
+                            logger.log(to_log)
 
         def __exit__(self, exc_type, exc_val, exc_tb):
             self.terminate()

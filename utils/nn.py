@@ -69,6 +69,7 @@ class Module(nn.Module):
         try:
             from torchsummary import summary
             summary(self, input_size)
+            return
         except Exception:
             pass
 
@@ -78,7 +79,7 @@ class Module(nn.Module):
             num_prams = count_parameters(module)
             result += f' >  {name[:20]:>20}: {type[:15]:<15} | {num_prams:9,}\n'
 
-        return result
+        print(result)
 
     def optim_forward(self, X):
         return self.forward(X)
