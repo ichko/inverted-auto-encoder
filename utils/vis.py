@@ -8,6 +8,55 @@ import torch as T
 FIG = None
 
 
+def show_vid(vid_path):
+    from IPython.display import HTML
+    from base64 import b64encode
+
+    v = open(vid_path, 'rb').read()
+    data_url = "data:video/webm;base64," + b64encode(v).decode()
+    return HTML("""<video autoplay loop controls><source src="%s"></video>""" % data_url)
+
+
+def vid(vid_path, size=None, fps=30.0):
+    import cv2
+
+    class VidCTX:
+        # https://stackoverflow.com/questions/49530857/python-opencv-video-format-play-in-browser
+
+        def __init__(self):
+            self.video = None
+            if size is not None:
+                self.init_vid(*size)
+
+        def init_vid(self, W, H):
+            self.W, self.H = W, H
+            fourcc = cv2.VideoWriter_fourcc(*'VP80')
+            self.video = cv2.VideoWriter(vid_path, fourcc, fps, (W, H))
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            if self.video is not None:
+                self.video.release()
+
+        def show(self):
+            return show_vid(vid_path)
+
+        def append(self, frame):
+            H, W = frame.shape[:2]
+            if self.video is None:
+                self.init_vid(W, H)
+            frame = cv2.resize(frame, (self.W, self.H))
+            if frame.max() <= 1:
+                frame = frame * 255
+            frame = frame.astype(np.uint8)
+
+            self.video.write(frame)
+
+    return VidCTX()
+
+
 def fig(figsize):
     if type(figsize) is int:
         figsize = figsize, figsize
@@ -97,7 +146,7 @@ def concat_grid(imgs):
     return imgs
 
 
-def imshow(imgs, figsize=8):
+def imshow(imgs, figsize=8, show=True):
     global FIG
     fig = FIG
 
@@ -125,14 +174,31 @@ def imshow(imgs, figsize=8):
             ax.set_yticks([])
             ax.imshow(img, cmap='viridis')
 
+    plt.gca().set_axis_off()
+    plt.subplots_adjust(top=1, bottom=0, right=1, left=0,
+                        hspace=0, wspace=0)
+    plt.margins(0, 0)
+
     fig.canvas.draw()
-    fig.canvas.flush_events()
+
+    if show:
+        fig.canvas.flush_events()
+        plt.show()
+    else:
+        # https://stackoverflow.com/questions/35355930/matplotlib-figure-to-image-as-a-numpy-array#comment72722681_35362787
+        width, height = fig.get_size_inches() * fig.get_dpi()
+        image = np.fromstring(fig.canvas.tostring_rgb(), dtype='uint8')
+        image = image.reshape(int(height), int(width), 3)
+        plt.close()
+
+        return image
 
 
 # Extensions
-T.Tensor.imshow = lambda self, figsize=8: imshow(
+T.Tensor.imshow = lambda self, figsize=8, show=True: imshow(
     self.detach().cpu().numpy(),
-    figsize,
+    figsize=figsize,
+    show=show
 )
 
 

@@ -3,7 +3,7 @@ import threading
 
 from collections import deque, defaultdict
 import atexit
-from tqdm.auto import tqdm, trange
+from tqdm import tqdm, trange
 
 import torch as T
 
