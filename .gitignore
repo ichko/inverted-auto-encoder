@@ -6,3 +6,5 @@ __pycache__
 .imgs
 .models
 .data
+.reports
+.videos

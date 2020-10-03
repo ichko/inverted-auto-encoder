@@ -69,10 +69,10 @@ class ReverseAE(tu.Module):
             # kornia.augmentation.RandomHorizontalFlip(0.5),
             # kornia.augmentation.RandomVerticalFlip(0.5),
             kornia.augmentation.RandomAffine(
-                degrees=10,
+                degrees=30,
                 translate=[0.1, 0.1],
-                scale=[0.8, 1.2],
-                shear=[-15, 15],
+                scale=[0.9, 1.1],
+                shear=[-10, 10],
             ),
             kornia.augmentation.RandomPerspective(0.6, p=0.5),
 
@@ -93,7 +93,7 @@ class ReverseAE(tu.Module):
 
     def optim_forward(self, X):
         def apply_noise(t):
-            noise = T.randn_like(t).to(self.device)
+            noise = T.randn_like(t).to(self.device) + 1
 
             t = self.noise(t)
             t = t + noise
@@ -116,7 +116,7 @@ if __name__ == "__main__":
     model = model.to('cuda')
     model.make_persisted('.models/glyph-ae.h5')
 
-    print(model.summary())
+    model.summary()
 
     X_mnist, y_mnist = next(iter(ut.data.get_mnist_dl(bs=1024, train=True)))
     X_mnist = X_mnist.to('cuda')
@@ -134,9 +134,9 @@ if __name__ == "__main__":
 
     with vis.fig([15, 5]) as ctx, mp.fit(
         model=model,
-        its=512 * 5,
+        its=512 * 10,
         dataloader=model.get_data_gen(bs=128),
-        optim_kw={'lr': 0.0001}
+        optim_kw={'lr': 0.001}
     ) as fit:
         for i in fit.wait:
             model.persist()
@@ -152,6 +152,10 @@ if __name__ == "__main__":
                 mnist_recon.view(1, 1, 10, 10, *mnist_recon.shape[-3:])
             ], dim=1).imshow()
 
-            plt.savefig(f'.imgs/screen_{run_id}.png', bbox_inches='tight')
+            plt.savefig(
+                f'.imgs/screen_{run_id}.png',
+                bbox_inches='tight',
+                pad_inches=0.0,
+            )
 
     model.save()
