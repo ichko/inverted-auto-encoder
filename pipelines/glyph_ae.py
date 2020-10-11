@@ -74,7 +74,7 @@ class ReverseAE(tu.Module):
                 scale=[0.9, 1.1],
                 shear=[-10, 10],
             ),
-            kornia.augmentation.RandomPerspective(0.6, p=0.5),
+            kornia.augmentation.RandomPerspective(distortion_scale=0.6, p=0.5),
 
         )
 
@@ -91,17 +91,17 @@ class ReverseAE(tu.Module):
         img = self.encoder(msg)
         return img
 
+    def apply_noise(self, t):
+        noise = T.randn_like(t).to(self.device) + 1
+
+        t = self.noise(t)
+        t = t + noise
+
+        return t
+
     def optim_forward(self, X):
-        def apply_noise(t):
-            noise = T.randn_like(t).to(self.device) + 1
-
-            t = self.noise(t)
-            t = t + noise
-
-            return t
-
         img = self.encoder(X)
-        img = apply_noise(img)
+        img = self.apply_noise(img)
         pred_msg = self.decoder(img)
 
         return pred_msg
@@ -128,7 +128,7 @@ if __name__ == "__main__":
         X.append(x[:10])
     X = T.cat(X).to('cuda')
 
-    msgs = model.sample(100)
+    msgs = model.sample(64)
     run_id = f'img_{datetime.now()}'
     imgs = model.encoder(msgs)
 
@@ -147,10 +147,10 @@ if __name__ == "__main__":
             imgs = model.encoder(msgs)
 
             T.cat([
-                imgs.view(1, 1, 10, 10, *imgs.shape[-3:]),
-                X.view(1, 1, 10, 10, *X_mnist.shape[-3:]),
-                mnist_recon.view(1, 1, 10, 10, *mnist_recon.shape[-3:])
-            ], dim=1).imshow()
+                imgs.view(1, 1, 16, 4, *imgs.shape[-3:]),
+                # X.view(1, 1, 10, 10, *X_mnist.shape[-3:]),
+                # mnist_recon.view(1, 1, 10, 10, *mnist_recon.shape[-3:])
+            ], dim=1).imshow(cmap='cool')
 
             plt.savefig(
                 f'.imgs/screen_{run_id}.png',
