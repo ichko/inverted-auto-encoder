@@ -146,7 +146,7 @@ def concat_grid(imgs):
     return imgs
 
 
-def imshow(imgs, figsize=8, show=True):
+def imshow(imgs, figsize=8, cmap='viridis', show=True):
     global FIG
     fig = FIG
 
@@ -172,7 +172,7 @@ def imshow(imgs, figsize=8, show=True):
             ax = fig.add_subplot(rows, cols, r * cols + c + 1)
             ax.set_xticks([])
             ax.set_yticks([])
-            ax.imshow(img, cmap='viridis')
+            ax.imshow(img, cmap=cmap)
 
     plt.gca().set_axis_off()
     plt.subplots_adjust(top=1, bottom=0, right=1, left=0,
@@ -195,10 +195,11 @@ def imshow(imgs, figsize=8, show=True):
 
 
 # Extensions
-T.Tensor.imshow = lambda self, figsize=8, show=True: imshow(
+T.Tensor.imshow = lambda self, figsize=8, show=True, cmap='viridis': imshow(
     self.detach().cpu().numpy(),
     figsize=figsize,
-    show=show
+    show=show,
+    cmap=cmap,
 )
 
 
