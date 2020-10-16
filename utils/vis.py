@@ -67,7 +67,7 @@ def fig(figsize):
             FIG = plt.figure(figsize=figsize)
             FIG.tight_layout()
             plt.ion()
-            plt.show()
+            # plt.show()
 
             return self
 
@@ -183,7 +183,7 @@ def imshow(imgs, figsize=8, cmap='viridis', show=True):
 
     if show:
         fig.canvas.flush_events()
-        plt.show()
+        # plt.show()
     else:
         # https://stackoverflow.com/questions/35355930/matplotlib-figure-to-image-as-a-numpy-array#comment72722681_35362787
         width, height = fig.get_size_inches() * fig.get_dpi()

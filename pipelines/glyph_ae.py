@@ -22,14 +22,16 @@ class MsgEncoder(tu.Module):
         self.net = nn.Sequential(
             tu.Reshape(-1, msg_size, 1, 1),
             tu.deconv_block(msg_size, 128, ks=5, s=2, p=1),
-            # nn.Dropout(0.2),
+            nn.Dropout(0.1),
+            tu.deconv_block(128, 128, ks=5, s=1, p=2),
             tu.deconv_block(128, 64, ks=5, s=1, p=2),
-            # nn.Dropout(0.3),
-            tu.deconv_block(64, 64, ks=5, s=1, p=2),
+            nn.Dropout(0.2),
             tu.deconv_block(64, 64, ks=5, s=2, p=1),
             # nn.Dropout(0.3),
             tu.deconv_block(64, 32, ks=5, s=1, p=2),
             tu.deconv_block(32, 32, ks=5, s=1, p=2),
+            tu.deconv_block(32, 32, ks=5, s=2, p=2),
+            tu.deconv_block(32, 32, ks=5, s=2, p=2),
             # nn.Dropout(0.01),
             tu.deconv_block(32, 16, ks=5, s=2, p=2),
             tu.deconv_block(16, img_channels, ks=4, s=2, p=0, a=nn.Sigmoid()),
@@ -44,7 +46,7 @@ class MsgDecoder(tu.Module):
         super().__init__()
 
         self.net = tu.ConvToFlat(
-            [in_channels, 128, 128, 64, 32, 32],
+            [in_channels, 128, 128, 64, 32, 32, 32],
             msg_size,
             ks=3,
             s=2,
@@ -69,12 +71,12 @@ class ReverseAE(tu.Module):
             # kornia.augmentation.RandomHorizontalFlip(0.5),
             # kornia.augmentation.RandomVerticalFlip(0.5),
             kornia.augmentation.RandomAffine(
-                degrees=30,
-                translate=[0.1, 0.1],
-                scale=[0.9, 1.1],
-                shear=[-10, 10],
+                degrees=45,
+                translate=[0.3, 0.3],
+                scale=[0.7, 1.3],
+                shear=[-20, 20],
             ),
-            kornia.augmentation.RandomPerspective(distortion_scale=0.6, p=0.5),
+            kornia.augmentation.RandomPerspective(distortion_scale=0.8, p=0.5),
 
         )
 
@@ -109,10 +111,16 @@ class ReverseAE(tu.Module):
 
 if __name__ == "__main__":
     from datetime import datetime
+    import sys
 
-    msg_size = 64
+    if len(sys.argv) > 1:
+        msg_size = int(sys.argv[1])
+    else:
+        msg_size = 128
 
-    model = ReverseAE(msg_size, img_channels=1)
+    print(f'MSG_SIZE = {msg_size}')
+
+    model = ReverseAE(msg_size, img_channels=3)
     model = model.to('cuda')
     model.make_persisted('.models/glyph-ae.h5')
 
@@ -128,29 +136,30 @@ if __name__ == "__main__":
         X.append(x[:10])
     X = T.cat(X).to('cuda')
 
-    msgs = model.sample(64)
+    msgs = model.sample(16)
     run_id = f'img_{datetime.now()}'
     imgs = model.encoder(msgs)
+    print(f'IMG_SHAPE: {imgs.shape}')
 
-    with vis.fig([15, 5]) as ctx, mp.fit(
+    with vis.fig([8, 2]) as ctx, mp.fit(
         model=model,
-        its=512 * 10,
+        its=512 * 25,
         dataloader=model.get_data_gen(bs=128),
         optim_kw={'lr': 0.001}
     ) as fit:
         for i in fit.wait:
             model.persist()
 
-            mnist_msg = model.decoder(X)
-            mnist_recon = model.encoder(mnist_msg)
+            # mnist_msg = model.decoder(X)
+            # mnist_recon = model.encoder(mnist_msg)
 
             imgs = model.encoder(msgs)
 
             T.cat([
-                imgs.view(1, 1, 16, 4, *imgs.shape[-3:]),
+                imgs.view(1, 1, 8, 2, *imgs.shape[-3:]),
                 # X.view(1, 1, 10, 10, *X_mnist.shape[-3:]),
                 # mnist_recon.view(1, 1, 10, 10, *mnist_recon.shape[-3:])
-            ], dim=1).imshow(cmap='cool')
+            ], dim=1).imshow(cmap='gray')
 
             plt.savefig(
                 f'.imgs/screen_{run_id}.png',

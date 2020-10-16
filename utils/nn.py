@@ -107,7 +107,7 @@ class DenseAE(Module):
             self.decoder = nn.Sequential(
                 dense(self.hid_size, 16),
                 dense(16, 128),
-                dense(128, 28 * 28, a=None),
+                dense(128, np.prod(x.shape[1:]), a=None),
                 Reshape(-1, *x.shape[1:]),
             )
 
