@@ -176,8 +176,8 @@ def imshow(imgs, figsize=8, cmap='viridis', show=True):
 
     plt.gca().set_axis_off()
     plt.subplots_adjust(top=1, bottom=0, right=1, left=0,
-                        hspace=0, wspace=0)
-    plt.margins(0, 0)
+                        hspace=0.05, wspace=0.05)
+    # plt.margins(0, 0)
 
     fig.canvas.draw()
 

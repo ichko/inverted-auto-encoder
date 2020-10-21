@@ -25,7 +25,7 @@ class WAndBLogger:
             project=project,
             config=dict(
                 hparams,
-                name=model.name,
+                name=name,
                 model_num_params=model.count_parameters(),
             ),
         )
