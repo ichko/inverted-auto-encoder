@@ -9,81 +9,109 @@ from torchvision import transforms
 from pipelines.iae import MsgEncoder, MsgDecoder, InvertedAE
 
 
-class Classifier(tu.Module):
-    def __init__(self, pretrained, requires_grad):
+class Model(tu.Module):
+    """
+    Class for optimizing inputs with gradient ascent.
+    Trying to generate inputs that generate images from some dataset (probably MNIST):
+        - we have fixed num of samples per class and fixed num classes
+        - the representations for the inputs that we are optimizing 
+          are in the self.embedding instance
+    """
+
+    def __init__(self, msg_size, pretrained, requires_grad):
         super().__init__()
+
+        self.num_samples_per_class = 10
+        self.num_classes = 10
+        self.num_embeddings = self.num_classes * self.num_samples_per_class
+
+        self.embedding = nn.Embedding(
+            self.num_embeddings,
+            msg_size
+        )
+
         if pretrained:
-            self.ae = T.load('.models/glyph-ae.h5_whole.h5')
+            self.ae = T.load(f'.models/glyph-ae-{msg_size}.h5_whole.h5')
         else:
-            msg_size = 64
             self.ae = InvertedAE(msg_size, img_channels=1)
 
-        self.ae.requires_grad = requires_grad
+        self.ae.set_requires_grad(requires_grad)
 
-    def metrics(self, loss, info):
-        y_pred = T.argmax(info['y_pred'], dim=1)
-        acc = (y_pred == info['y']).float().sum() / len(y_pred)
-        return {'acc': acc.item()}
+    def forward(self, idx):
+        msg = self.embedding(idx)
+        img = self.ae.encoder(msg)
+        return img
 
-    def forward(self, x):
-        x = self.ae.decoder(x)
-        in_size = x.size(1)
+    def generate_all(self):
+        idxs = T.arange(0, self.num_embeddings).to(self.device)
+        imgs = self.forward(idxs)
+        return self.data_imgs.to(self.device), imgs
 
-        if not hasattr(self, 'net'):
-            self.criterion = nn.CrossEntropyLoss()
+    def get_data(self, bs):
+        # Hard coded to work with the MNIST dataset
+        X_mnist, y_mnist = next(
+            iter(ut.data.get_mnist_dl(bs=1024, train=True)))
 
-            self.net = nn.Sequential(
-                nn.Flatten(),
-                # tu.dense(i=in_size, o=100),
-                tu.dense(i=in_size, o=10),
-            ).to(x.device)
+        imgs = []
+        for i in range(self.num_classes):
+            x = X_mnist[y_mnist == i]
+            imgs.append(x[:self.num_samples_per_class])
 
-        return self.net(x)
+        imgs = T.cat(imgs)
+        device = self.device
+        self.data_imgs = imgs
+
+        class Dataset(T.utils.data.Dataset):
+            def __len__(self):
+                return len(imgs) * 999_999
+
+            def __getitem__(self, idx):
+                idx = idx % 100
+
+                y = imgs[idx].to(device)
+                X = T.tensor(idx).to(device)
+                return X, y
+
+        return T.utils.data.DataLoader(
+            dataset=Dataset(),
+            batch_size=bs,
+            shuffle=True,
+        )
 
 
 if __name__ == '__main__':
-    from utils.logger import WAndBLogger
     import sys
+    import time
 
-    data = ut.common.pipe(
-        ut.data.get_mnist_dl,
-        ut.data.map_it(lambda batch: [t.to('cuda') for t in batch]),
-    )
+    from utils.logger import WAndBLogger
+    from datetime import datetime
+    import matplotlib.pyplot as plt
 
-    if len(sys.argv) == 3:
-        pretrained = sys.argv[1] == 'True'
-        requires_grad = sys.argv[2] == 'True'
-    else:
-        pretrained = False
-        requires_grad = False
+    run_id = f'img_{datetime.now()}'
 
-    print(f'''
-        =======================
-        pretrained = {pretrained}
-        requires_grad = {requires_grad}
-        =======================
-    ''')
-
-    model = Classifier(pretrained=pretrained,
-                       requires_grad=requires_grad).to('cuda')
-
-    logger = WAndBLogger(
-        project='zero_shot_structure',
-        name=f'mnist_classifier_pretrained={pretrained}_grad={requires_grad}',
-        model=model,
-        hparams={},
-        type='video',
-    )
+    model = Model(
+        msg_size=32,
+        pretrained=False,
+        requires_grad=False,
+    ).to('cuda')
 
     with ut.mp.fit(
         model=model,
-        dataloader={
-            'train': data(bs=128, train=True),
-            'val': data(bs=128, train=False)
-        },
-        epochs=10,
+        dataloader=model.get_data(bs=512),
+        its=20_000,
         optim_kw={'lr': 0.001},
-        logger=logger,
     ) as fit:
-        fit.model.summary(input_size=(1, 28, 28))
-        fit.join()
+        for i in fit.wait:
+            data_imgs, reconstr_imgs = model.generate_all()
+
+            T.cat([
+                data_imgs.view(1, 1, 10, 10, *data_imgs.shape[-3:]),
+                reconstr_imgs.view(1, 1, 10, 10, *reconstr_imgs.shape[-3:])
+            ], dim=1).imshow(cmap='gray', figsize=[10, 5])
+
+            plt.savefig(
+                f'.imgs/screen_{run_id}.png',
+                transparent=True,
+            )
+
+            time.sleep(1)

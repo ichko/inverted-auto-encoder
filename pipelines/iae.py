@@ -115,7 +115,7 @@ if __name__ == "__main__":
 
     model = InvertedAE(msg_size, img_channels=1)
     model = model.to('cuda')
-    model.make_persisted('.models/glyph-ae.h5')
+    model.make_persisted(f'.models/glyph-ae-{msg_size}.h5')
 
     model.summary()
 

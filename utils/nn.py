@@ -65,6 +65,10 @@ class Module(nn.Module):
             'y': y,
         }
 
+    def set_requires_grad(self, value):
+        for param in self.parameters():
+            param.requires_grad = value
+
     def summary(self, input_size=-1):
         try:
             from torchsummary import summary
