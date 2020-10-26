@@ -6,7 +6,7 @@ import torch.nn as nn
 import torchvision
 from torchvision import transforms
 
-from pipelines.iae import MsgEncoder, MsgDecoder, InvertedAE
+from pipelines.iae import ConvShrink, ConvExpand, InvertedAE
 
 
 class Classifier(tu.Module):
@@ -26,7 +26,7 @@ class Classifier(tu.Module):
         return {'acc': acc.item()}
 
     def forward(self, x):
-        x = self.ae.decoder(x)
+        x = self.ae.shrink(x)
         in_size = x.size(1)
 
         if not hasattr(self, 'net'):

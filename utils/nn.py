@@ -189,12 +189,13 @@ class Reshape(nn.Module):
         return x.reshape(self.shape)
 
 
-def lam(forward):
-    class Lambda(nn.Module):
-        def forward(self, *args):
-            return forward(*args)
+class Lambda(nn.Module):
+    def __init__(self, forward):
+        super().__init__()
+        self.forward = forward
 
-    return Lambda()
+    def forward(self, *args):
+        return self.forward(*args)
 
 
 def resize(t, size):
@@ -228,6 +229,9 @@ def deconv_block(i, o, ks, s, p, a=get_activation(), d=1, bn=True):
     if a is not None:
         block.append(a)
 
+    if len(block) == 1:
+        return block[0]
+
     return nn.Sequential(*block)
 
 
@@ -259,6 +263,36 @@ def conv_transform(sizes, ks=5, s=1, a=get_activation()):
 
 def conv_decoder(sizes, ks=4, s=2, a=get_activation()):
     return stack_conv_blocks(deconv_block, sizes, ks, a, s=s, p=ks // 2 - 1)
+
+
+class FlatToConv(nn.Module):
+    def __init__(self, channel_size, ks, s, a, p):
+        super().__init__()
+
+        def process_arg(*args):
+            return [
+                a
+                if type(a) is list
+                else [a] * (len(channel_size) - 1)
+                for a in args
+            ]
+
+        ks, s, a, p = process_arg(ks, s, a, p)
+
+        layers = []
+        layers_io = list(zip(channel_size, channel_size[1:]))
+        for idx, ((i, o), ks, s, a, p) in enumerate(zip(layers_io, ks, s, a, p)):
+            bn = idx < len(layers_io) - 1
+            l = deconv_block(i=i, o=o, ks=ks, s=s, p=p, a=a, bn=bn)
+            layers.append(l)
+
+        self.net = nn.Sequential(
+            Reshape(-1, channel_size[0], 1, 1),
+            *layers
+        )
+
+    def forward(self, x):
+        return self.net(x)
 
 
 class ConvToFlat(nn.Module):

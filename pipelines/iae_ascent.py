@@ -39,7 +39,7 @@ class Model(tu.Module):
 
     def forward(self, idx):
         msg = self.embedding(idx)
-        img = self.ae.encoder(msg)
+        img = self.ae.expand(msg)
         return img
 
     def generate_all(self):
@@ -90,7 +90,7 @@ if __name__ == '__main__':
     run_id = f'img_{datetime.now()}'
 
     model = Model(
-        msg_size=32,
+        msg_size=128,
         pretrained=False,
         requires_grad=False,
     ).to('cuda')

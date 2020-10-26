@@ -15,34 +15,30 @@ import kornia
 import random
 
 
-class MsgEncoder(tu.Module):
+class ConvExpand(tu.Module):
     def __init__(self, msg_size, img_channels):
         super().__init__()
-
         self.net = nn.Sequential(
-            tu.Reshape(-1, msg_size, 1, 1),
-            tu.deconv_block(msg_size, 128, ks=5, s=2, p=1),
-            tu.deconv_block(128, 64, ks=5, s=1, p=2),
-            tu.deconv_block(64, 64, ks=5, s=1, p=2),
-            tu.deconv_block(64, 64, ks=5, s=2, p=1),
-            tu.deconv_block(64, 32, ks=5, s=1, p=2),
-            tu.deconv_block(32, 32, ks=5, s=1, p=2),
-            tu.deconv_block(32, 16, ks=5, s=2, p=2),
-            tu.deconv_block(16, img_channels, ks=4, s=2, p=0, a=nn.Sigmoid()),
+            tu.FlatToConv(
+                [msg_size, 128, 64, 64, 32, img_channels],
+                ks=5,
+                s=2,
+                a=[nn.LeakyReLU(0.3)] * 4 + [nn.Sigmoid()],
+                p=1,
+            ),
         )
 
     def forward(self, z):
         return self.net(z)
 
 
-class MsgDecoder(tu.Module):
+class ConvShrink(tu.Module):
     def __init__(self, in_channels, msg_size):
         super().__init__()
-
         self.net = tu.ConvToFlat(
-            [in_channels, 128, 128, 64, 32, 32],
+            [in_channels, 128, 64, 64, 32, 32],
             msg_size,
-            ks=3,
+            ks=5,
             s=2,
         )
 
@@ -50,28 +46,41 @@ class MsgDecoder(tu.Module):
         return self.net(x)
 
 
+class Augmentation(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.structural_augmentation = nn.Sequential(
+            # kornia.augmentation.RandomHorizontalFlip(0.5),
+            # kornia.augmentation.RandomVerticalFlip(0.5),
+            # kornia.augmentation.ColorJitter(0.0, 0.5, 0.5, 0),
+            kornia.augmentation.RandomAffine(
+                degrees=10,
+                translate=[0.0, 0.0],
+                scale=[0.9, 1.1],
+                shear=[-2, 2],
+            ),
+            kornia.augmentation.RandomPerspective(distortion_scale=0.3, p=0.9),
+        )
+
+    def forward(self, x):
+        x = self.structural_augmentation(x)
+        noise = T.randn_like(x)[:, :] + 1
+        x = x + noise
+
+        return x
+
+
 class InvertedAE(tu.Module):
     def __init__(self, msg_size, img_channels):
         super().__init__()
         self.msg_size = msg_size
-        self.encoder = MsgEncoder(msg_size, img_channels)
-        self.decoder = MsgDecoder(img_channels, msg_size)
+        self.expand = ConvExpand(msg_size, img_channels)
+        self.augment = Augmentation()
+        self.shrink = ConvShrink(img_channels, msg_size)
 
         # This is done so that te decoder parameters are initialized
-        imgs = self.encoder(self.sample(bs=1))
-        self.decoder(imgs)
-
-        self.noise = nn.Sequential(
-            # kornia.augmentation.RandomHorizontalFlip(0.5),
-            # kornia.augmentation.RandomVerticalFlip(0.5),
-            kornia.augmentation.RandomAffine(
-                degrees=30,
-                translate=[0.1, 0.1],
-                scale=[0.9, 1.1],
-                shear=[-10, 10],
-            ),
-            kornia.augmentation.RandomPerspective(distortion_scale=0.6, p=0.5),
-        )
+        imgs = self.expand(self.sample(bs=1))
+        self.shrink(imgs)
 
     def get_data_gen(self, bs):
         while True:
@@ -83,41 +92,47 @@ class InvertedAE(tu.Module):
 
     def forward(self, bs):
         msg = self.sample(bs)
-        img = self.encoder(msg)
+        img = self.expand(msg)
         return img
 
-    def apply_noise(self, t):
-        noise = T.randn_like(t)[:, :1] + 1
+    def optim_forward(self, x):
+        x = self.expand(x)
+        x = self.augment(x)
+        x = self.shrink(x)
+        return x
 
-        t = self.noise(t)
-        t = t + noise
 
-        return t
+def get_model(preload=False):
+    import sys
 
-    def optim_forward(self, X):
-        img = self.encoder(X)
-        img = self.apply_noise(img)
-        pred_msg = self.decoder(img)
+    try:
+        msg_size = int(sys.argv[1])
+    except:
+        msg_size = 200
 
-        return pred_msg
+    print(f'MSG_SIZE = {msg_size}')
+
+    # if preload:
+    #     whole_model_name = f'../.models/glyph-ae-{msg_size}.h5_whole.h5'
+    #     return T.load(whole_model_name)
+
+    model = InvertedAE(msg_size, img_channels=1)
+    model = model.to('cuda')
+
+    model.make_persisted(f'.models/glyph-ae-{msg_size}.h5')
+
+    if preload:
+        model.preload_weights()
+
+    model.summary()
+
+    return model
 
 
 if __name__ == "__main__":
     from datetime import datetime
-    import sys
 
-    if len(sys.argv) > 1:
-        msg_size = int(sys.argv[1])
-    else:
-        msg_size = 32
-
-    print(f'MSG_SIZE = {msg_size}')
-
-    model = InvertedAE(msg_size, img_channels=1)
-    model = model.to('cuda')
-    model.make_persisted(f'.models/glyph-ae-{msg_size}.h5')
-
-    model.summary()
+    model = get_model(preload=False)
 
     X_mnist, y_mnist = next(iter(ut.data.get_mnist_dl(bs=1024, train=True)))
     X_mnist = X_mnist.to('cuda')
@@ -129,35 +144,35 @@ if __name__ == "__main__":
         X.append(x[:10])
     X = T.cat(X).to('cuda')
 
-    msgs = model.sample(100)
+    msgs = model.sample(32)
     run_id = f'img_{datetime.now()}'
-    imgs = model.encoder(msgs)
+    imgs = model.expand(msgs)
     print(f'IMG_SHAPE: {imgs.shape}')
 
-    with vis.fig([12, 4]) as ctx, mp.fit(
+    with vis.fig([8, 4]) as ctx, mp.fit(
         model=model,
         its=512 * 25,
-        dataloader=model.get_data_gen(bs=128),
-        optim_kw={'lr': 0.001}
+        dataloader=model.get_data_gen(bs=64),
+        optim_kw={'lr': 0.01}
     ) as fit:
         for i in fit.wait:
             model.persist()
 
-            mnist_msg = model.decoder(X)
-            mnist_recon = model.encoder(mnist_msg)
+            # mnist_msg = model.decoder(X)
+            # mnist_recon = model.encoder(mnist_msg)
 
-            imgs = model.encoder(msgs)
+            imgs = model.expand(msgs)
 
             T.cat([
-                imgs.view(1, 1, 10, 10, *imgs.shape[-3:]),
-                X.view(1, 1, 10, 10, *X_mnist.shape[-3:]),
-                mnist_recon.view(1, 1, 10, 10, *mnist_recon.shape[-3:])
+                imgs.view(1, 1, 8, 4, *imgs.shape[-3:]),
+                # X.view(1, 1, 10, 10, *X_mnist.shape[-3:]),
+                # mnist_recon.view(1, 1, 10, 10, *mnist_recon.shape[-3:])
             ], dim=1).imshow(cmap='gray')
 
             plt.savefig(
                 f'.imgs/screen_{run_id}.png',
-                # bbox_inches='tight',
-                # pad_inches=0.0,
+                bbox_inches='tight',
+                pad_inches=0.0,
                 transparent=True,
             )
 
