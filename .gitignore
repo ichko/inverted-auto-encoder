@@ -8,3 +8,6 @@ __pycache__
 .data
 .reports
 .videos
+models
+imgs
+new_img

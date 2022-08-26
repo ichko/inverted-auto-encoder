@@ -116,10 +116,10 @@ def get_model(preload=False):
     #     whole_model_name = f'../.models/glyph-ae-{msg_size}.h5_whole.h5'
     #     return T.load(whole_model_name)
 
-    model = InvertedAE(msg_size, img_channels=1)
+    model = InvertedAE(msg_size, img_channels=3)
     model = model.to('cuda')
 
-    model.make_persisted(f'.models/glyph-ae-{msg_size}.h5')
+    model.make_persisted(f'models/glyph-ae-{msg_size}.h5')
 
     if preload:
         model.preload_weights()
@@ -153,7 +153,7 @@ if __name__ == "__main__":
         model=model,
         its=512 * 25,
         dataloader=model.get_data_gen(bs=64),
-        optim_kw={'lr': 0.01}
+        optim_kw={'lr': 0.02}
     ) as fit:
         for i in fit.wait:
             model.persist()
@@ -170,7 +170,7 @@ if __name__ == "__main__":
             ], dim=1).imshow(cmap='gray')
 
             plt.savefig(
-                f'.imgs/screen_{run_id}.png',
+                f'imgs/screen_{run_id}.png',
                 bbox_inches='tight',
                 pad_inches=0.0,
                 transparent=True,

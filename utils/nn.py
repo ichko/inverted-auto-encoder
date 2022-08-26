@@ -10,7 +10,7 @@ import torch.nn.functional as F
 class Module(nn.Module):
     def __init__(self):
         super().__init__()
-        self.name = 'Custom Module'
+        self.name = "Custom Module"
         self.criterion = nn.MSELoss()
 
     def count_parameters(self):
@@ -27,7 +27,7 @@ class Module(nn.Module):
 
     def save(self, path=None):
         path = path if self.path is None else path
-        T.save(self, f'{self.path}_whole.h5')
+        T.save(self, f"{self.path}_whole.h5")
 
     def can_be_preloaded(self):
         return os.path.isfile(self.path)
@@ -45,24 +45,27 @@ class Module(nn.Module):
         loss = self.criterion(y_pred, y)
 
         if loss.requires_grad:
-            if not hasattr(self, 'optim'):
+            if not hasattr(self, "optim"):
                 self.configure_optim(**optim_kw)
 
             self.optim.zero_grad()
             loss.backward()
             self.optim.step()
 
-        metrics = self.metrics(loss.item(), {
-            'X': X,
-            'y_pred': y_pred,
-            'y': y,
-        })
+        metrics = self.metrics(
+            loss.item(),
+            {
+                "X": X,
+                "y_pred": y_pred,
+                "y": y,
+            },
+        )
 
         return loss.item(), {
-            'metrics': metrics,
-            'X': X,
-            'y_pred': y_pred,
-            'y': y,
+            "metrics": metrics,
+            "X": X,
+            "y_pred": y_pred,
+            "y": y,
         }
 
     def set_requires_grad(self, value):
@@ -72,16 +75,17 @@ class Module(nn.Module):
     def summary(self, input_size=-1):
         try:
             from torchsummary import summary
+
             summary(self, input_size)
             return
         except Exception:
             pass
 
-        result = f' > {self.name[:38]:<38} | {count_parameters(self):09,}\n'
+        result = f" > {self.name[:38]:<38} | {count_parameters(self):09,}\n"
         for name, module in self.named_children():
             type = module._get_name()
             num_prams = count_parameters(module)
-            result += f' >  {name[:20]:>20}: {type[:15]:<15} | {num_prams:9,}\n'
+            result += f" >  {name[:20]:>20}: {type[:15]:<15} | {num_prams:9,}\n"
 
         print(result)
 
@@ -99,7 +103,7 @@ class DenseAE(Module):
         self.hid_size = hid_size
 
     def forward(self, x):
-        if not hasattr(self, 'encoder'):
+        if not hasattr(self, "encoder"):
             dims = np.prod(list(x.shape[1:]))
             self.encoder = nn.Sequential(
                 nn.Flatten(),
@@ -115,7 +119,7 @@ class DenseAE(Module):
                 Reshape(-1, *x.shape[1:]),
             )
 
-            self.criterion = nn.BCELoss(reduction='mean')
+            self.criterion = nn.BCELoss(reduction="mean")
             self.to(x.device)
 
         x = self.encoder(x)
@@ -138,12 +142,13 @@ def one_hot(t, one_hot_size=None):
 
 def cat_channels():
     """
-        Concatenate number of channels in a single tensor
-        Converts tensor with shape:
-            (bs, num_channels, channel_size, h, w)
-        to tensor with shape:
-            (bs, num_channels * channel_size, h, w)
+    Concatenate number of channels in a single tensor
+    Converts tensor with shape:
+        (bs, num_channels, channel_size, h, w)
+    to tensor with shape:
+        (bs, num_channels * channel_size, h, w)
     """
+
     class CatChannels(nn.Module):
         def forward(self, t):
             shape = t.size()
@@ -200,7 +205,7 @@ class Lambda(nn.Module):
 
 
 def resize(t, size):
-    return F.interpolate(t, size, mode='bicubic', align_corners=True)
+    return F.interpolate(t, size, mode="bicubic", align_corners=True)
 
 
 def conv_block(i, o, ks, s, p, a=get_activation(), d=1, bn=True):
@@ -248,7 +253,8 @@ def stack_conv_blocks(block_ctor, sizes, ks, a, s, p):
             d=1,
             # batch norm everywhere except the last layer
             bn=(l != len(sizes) - 2),
-        ) for l in range(len(sizes) - 1)
+        )
+        for l in range(len(sizes) - 1)
     ]
 
     return nn.Sequential(*layers)
@@ -272,10 +278,7 @@ class FlatToConv(nn.Module):
 
         def process_arg(*args):
             return [
-                a
-                if type(a) is list
-                else [a] * (len(channel_size) - 1)
-                for a in args
+                a if type(a) is list else [a] * (len(channel_size) - 1) for a in args
             ]
 
         ks, s, a, p = process_arg(ks, s, a, p)
@@ -287,10 +290,7 @@ class FlatToConv(nn.Module):
             l = deconv_block(i=i, o=o, ks=ks, s=s, p=p, a=a, bn=bn)
             layers.append(l)
 
-        self.net = nn.Sequential(
-            Reshape(-1, channel_size[0], 1, 1),
-            *layers
-        )
+        self.net = nn.Sequential(Reshape(-1, channel_size[0], 1, 1), *layers)
 
     def forward(self, x):
         return self.net(x)
@@ -313,21 +313,17 @@ class ConvToFlat(nn.Module):
         self.a = a
 
     def forward(self, x):
-        if not hasattr(self, 'net'):
+        if not hasattr(self, "net"):
             input_size = x.shape[-2:]
             input_channels = self.channel_sizes[0]
-            self.encoder = conv_transform(
-                self.channel_sizes, self.ks, self.s, self.a
-            )
+            self.encoder = conv_transform(self.channel_sizes, self.ks, self.s, self.a)
 
             self.encoder_out_shape = compute_output_shape(
                 self.encoder,
                 (input_channels, *input_size),
             )
 
-            self.flat_encoder_out_size = np.prod(
-                self.encoder_out_shape[-3:]
-            )
+            self.flat_encoder_out_size = np.prod(self.encoder_out_shape[-3:])
 
             self.encoded_to_flat = nn.Sequential(
                 nn.Flatten(),
@@ -359,7 +355,7 @@ def extract_tensors(vec, tensor_shapes):
 
     tensors = []
     for i in range(len(slice_indices) - 1):
-        t = vec[:, slice_indices[i]:slice_indices[i + 1]]
+        t = vec[:, slice_indices[i] : slice_indices[i + 1]]
         t = t.reshape(-1, *tensor_shapes[i])
         tensors.append(t)
 
@@ -384,19 +380,29 @@ def spatial_transformer(i, num_channels, only_translations=False):
                 T.tensor(
                     [1, 0, 0, 0, 1, 0] * num_channels,
                     dtype=T.float,
-                ).to(self.device))
+                ).to(self.device)
+            )
 
         def forward(self, x):
             inp, tensor_3d = x
 
             theta = self.locator(inp)
-            _, C, H, W, = tensor_3d.shape
+            (
+                _,
+                C,
+                H,
+                W,
+            ) = tensor_3d.shape
 
             if only_translations:
-                theta[:, :, :-1] = T.tensor(
-                    [[1, 0], [0, 1]],
-                    dtype=T.float,
-                ).to(self.device).unsqueeze_(0)
+                theta[:, :, :-1] = (
+                    T.tensor(
+                        [[1, 0], [0, 1]],
+                        dtype=T.float,
+                    )
+                    .to(self.device)
+                    .unsqueeze_(0)
+                )
 
             grid = F.affine_grid(
                 theta,
@@ -537,8 +543,7 @@ class KernelEmbedding(nn.Module):
         super().__init__()
 
         self.activation = a
-        self.kernel_shapes = [[o, i, ks, ks]
-                              for i, o in zip(channels, channels[1:])]
+        self.kernel_shapes = [[o, i, ks, ks] for i, o in zip(channels, channels[1:])]
 
         # self.batch_norms = nn.Sequential(
         #     *[nn.BatchNorm2d(k[0]) for k in self.kernel_shapes])
@@ -580,7 +585,7 @@ def to_np(t):
 
 T.Tensor.np = property(lambda self: to_np(self))
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # Sanity check mask_sequence
     tensor = T.rand(2, 3, 4)
     mask = T.rand(2, 3) > 0.5
