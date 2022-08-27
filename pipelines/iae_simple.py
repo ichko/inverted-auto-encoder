@@ -53,15 +53,15 @@ class DenseIAE(nn.Module):
         self.msg_size = msg_size
         img_size = np.prod(img_shape)
         self.expand = nn.Sequential(
-            nn.Linear(msg_size, 32),
+            nn.Embedding(msg_size, 32),
             nn.BatchNorm1d(32),
-            nn.LeakyReLU(negative_slope=0.05),
+            nn.SiLU(),
             nn.Linear(32, 64),
             nn.BatchNorm1d(64),
-            nn.LeakyReLU(negative_slope=0.05),
+            nn.SiLU(),
             nn.Linear(64, 64),
             nn.BatchNorm1d(64),
-            nn.LeakyReLU(negative_slope=0.05),
+            nn.SiLU(),
             nn.Linear(64, img_size),
             nn.Sigmoid(),
             Reshape(*img_shape),
@@ -70,20 +70,20 @@ class DenseIAE(nn.Module):
             nn.Flatten(),
             nn.Linear(img_size, 64),
             nn.BatchNorm1d(64),
-            nn.LeakyReLU(negative_slope=0.05),
+            nn.SiLU(),
             nn.Linear(64, 64),
             nn.BatchNorm1d(64),
-            nn.LeakyReLU(negative_slope=0.05),
+            nn.SiLU(),
             nn.Linear(64, 64),
             nn.BatchNorm1d(64),
-            nn.LeakyReLU(negative_slope=0.05),
+            nn.SiLU(),
             nn.Linear(64, msg_size),
         )
 
         self.noise = Noise()
 
     def sample(self, bs):
-        return torch.randn(bs, self.msg_size).to(self.device)
+        return torch.empty(bs, dtype=torch.long).random_(self.msg_size).to(self.device)
 
     def forward(self, msg):
         pred_img = self.expand(msg)
@@ -96,7 +96,7 @@ class DenseIAE(nn.Module):
 
         msg = self.sample(bs)
         pred_msg, pred_img = self.forward(msg)
-        loss = F.mse_loss(pred_msg, msg)
+        loss = F.cross_entropy(pred_msg, msg)
 
         optim.zero_grad()
         loss.backward()
@@ -107,10 +107,10 @@ class DenseIAE(nn.Module):
 
 if __name__ == "__main__":
     device = 'cuda'
-    model = DenseIAE(256, img_shape=[3, 32, 32])
+    model = DenseIAE(100, img_shape=[1, 32, 32])
     model = model.to(device)
 
-    its = 10000
+    its = 30000
     pbar = trange(its)
     history = []
 
@@ -125,7 +125,7 @@ if __name__ == "__main__":
 
         if i % 100 == 0:
             plt.scatter(i, loss, c="b")
-            plt.pause(0.0001)
+            plt.pause(0.00005)
 
             pred_img = model.expand(msg)
             pred_img = torchvision.utils.make_grid(pred_img, nrows=4)
