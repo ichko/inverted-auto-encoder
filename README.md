@@ -1,5 +1,8 @@
 # Inverted Auto-Encoder
 
+This repo contains code for generating visual language for exchanging information between neural networks.
+The procedure described in the blog post generates 2D structured images that try to preserve the information two neural networks are trying to communicate under differentiable noise.
+
 - **Blog post associated with this repository - [HERE](https://ichko.github.io/emergent-structures-in-robust-message-passing)**
 
 - This work has been accepted as a short talk in **[EuroSciPy 2022](https://www.euroscipy.org/2022/)**.
